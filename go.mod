@@ -1,4 +1,4 @@
-module vapollo
+module github.com/kyeason/vapollo
 
 go 1.16
 
