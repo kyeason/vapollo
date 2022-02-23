@@ -80,11 +80,10 @@ func main() {
     type Config struct {
       PropertyA string    `mapstructure:"property_a"`,
       PropertyB int       `mapstructure:"property_b"`,
-        //...
+      //...
     }
     appConfig := &Config{}
     apollo := vapollo.InitApollo(vapollo.Server(v.GetString("server")),vapollo.AppId(v.GetString("appId")))
-    //
     v, err = vapollo.InitViperRemote(apollo, appConfig, viper.KeyDelimiter(":"))
 }
 ```
