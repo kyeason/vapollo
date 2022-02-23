@@ -3,7 +3,7 @@
 // Use of this source code is governed by an MIT-style
 // license that can be found in the LICENSE file.
 
-// Viper-apollo is a remote provider of viper(https://github.com/spf13/viper)
+// vapollo is a remote provider of viper(https://github.com/spf13/viper)
 // for c-trip apollo config
 // It reads configurations of a apollo appId, and watch modifications
 
@@ -88,8 +88,8 @@ func AppId(app string) Option {
 	})
 }
 
-// InitApollo initiate apollo with options which server, appId are mandatory
-// e.g. InitApollo(vapollo.Server("127.0.0.1:8888"), vapollo.AppID("TestApp"))
+// InitApollo initiate apollo with options which server, appId are mandatory.
+// e.g. InitApollo(vapollo.Server("127.0.0.1"), vapollo.AppID("TestApp"))
 func InitApollo(opts ... Option) *Apollo {
 	apollo := &Apollo {
 		cluster: "default",
@@ -114,7 +114,7 @@ func InitApollo(opts ... Option) *Apollo {
 	return apollo
 }
 
-// InitViperRemote initiate viper and apollo remote
+// InitViperRemote initiate viper and apollo remote.
 // Here viper.Options are exposed because if any keys of a app are in nested
 // style like "a.b", then viper can NOT read it correctly. So we can set the
 // KeyDelimiter option of viper to ':' or else instead of '.'
