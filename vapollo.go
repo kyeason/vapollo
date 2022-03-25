@@ -13,12 +13,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/mitchellh/mapstructure"
 	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 )
 
@@ -32,11 +34,10 @@ type Apollo struct {
 	ip            string
 	notifications []notification
 
-	// Pointer of viper instance
-	viper        *viper.Viper
 	// If a struct interface was provided, vapollo will unmarshal the
 	// key/values to the object
-	object        interface{}
+	object       interface{}
+	notify chan  bool
 }
 
 // apollo notification structure
@@ -88,6 +89,18 @@ func AppId(app string) Option {
 	})
 }
 
+func Struct(obj interface{}) Option {
+	return optionFunc(func(a* Apollo) {
+		a.object = obj
+	})
+}
+
+func Notify(notify chan bool) Option {
+	return optionFunc(func(a* Apollo) {
+		a.notify = notify
+	})
+}
+
 // InitApollo initiate apollo with options which server, appId are mandatory.
 // e.g. InitApollo(vapollo.Server("127.0.0.1"), vapollo.AppID("TestApp"))
 func InitApollo(opts ... Option) *Apollo {
@@ -114,11 +127,13 @@ func InitApollo(opts ... Option) *Apollo {
 	return apollo
 }
 
+var Remote *viper.Viper
+
 // InitViperRemote initiate viper and apollo remote.
 // Here viper.Options are exposed because if any keys of a app are in nested
 // style like "a.b", then viper can NOT read it correctly. So we can set the
 // KeyDelimiter option of viper to ':' or else instead of '.'
-func InitViperRemote(apollo *Apollo, obj interface{}, opts ...viper.Option) (*viper.Viper, error) {
+func InitViperRemote(apollo *Apollo, opts ...viper.Option) (*viper.Viper, error) {
 	if apollo == nil {
 		log.Panicln("Can not init viper remote with apollo: Please check and init apollo first")
 	}
@@ -128,26 +143,21 @@ func InitViperRemote(apollo *Apollo, obj interface{}, opts ...viper.Option) (*vi
 	}
 	viper.RemoteConfig = apollo
 	if len(opts) > 0 {
-		apollo.viper = viper.NewWithOptions(opts...)
+		Remote = viper.NewWithOptions(opts...)
 	} else {
-		apollo.viper = viper.New()
+		Remote = viper.GetViper()
 	}
-	err := apollo.viper.AddRemoteProvider("consul", apollo.server, apollo.appID)
+
+	err := Remote.AddRemoteProvider("consul", apollo.server, apollo.appID)
 	if err != nil {
 		return nil, err
 	}
-	apollo.viper.SetConfigType("json")
-	if err := apollo.viper.ReadRemoteConfig(); err != nil {
-		return nil, err
-	}
-	// Map values to object member if a object interface was provided
-	if obj != nil {
-		apollo.object = obj
-		_ = apollo.viper.Unmarshal(apollo.object)
-	}
+	Remote.SetConfigType("json")
 	// Watch modifications on remote
-	_ = apollo.viper.WatchRemoteConfigOnChannel()
-	return apollo.viper, nil
+	_ = Remote.WatchRemoteConfigOnChannel()
+	// Map values to object member if a object interface was provided
+	_ = apollo.ParseStruct(viper.AllSettings(), Remote.AllSettings())
+	return Remote, nil
 }
 
 func (a Apollo) Get(rp viper.RemoteProvider) (io.Reader, error) {
@@ -175,21 +185,22 @@ func (a Apollo) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.RemoteRespo
 				modified, err := a.getNotifications()
 				if err != nil {
 					vc <- &viper.RemoteResponse{Error: err}
-					return
+					log.Printf("Watch remote channel error=%v", err)
+					continue
 				}
 
 				// read content if modified(notification with HTTP status 200)
 				if modified {
-					err = a.viper.ReadRemoteConfig()
+					err = Remote.ReadRemoteConfig()
 					if err != nil {
 						log.Println("Failed reading apollo config: ", err)
 						continue
 					}
 					if a.object != nil {
-						err = a.viper.Unmarshal(a.object)
-						if err != nil {
-							log.Println("Failed saving apollo changes to object: ", err)
-						}
+						settings := Remote.AllSettings()
+						log.Printf("All settings: %v", settings)
+						// Parse all settings to the struct interface provided
+						_ = a.ParseStruct(nil, settings)
 					}
 				}
 			}
@@ -290,4 +301,41 @@ func (a *Apollo) getNotifications() (bool, error) {
 	}
 	err = json.Unmarshal(b, &a.notifications)
 	return true, err
+}
+
+func JsonStructInMapHookFunc() mapstructure.DecodeHookFunc {
+	return func(f reflect.Value, t reflect.Value) (interface{}, error) {
+		if f.Kind() == reflect.String && t.Kind() == reflect.Struct {
+			o := map[string]interface{}{}
+			err := json.Unmarshal([]byte(f.String()), &o)
+			if err != nil {
+				return f.Interface(), err
+			}
+			return o, nil
+		}
+		return f.Interface(), nil
+	}
+}
+
+func (a* Apollo) ParseStruct(local map[string]interface{}, remote map[string]interface{}) error {
+	deCfg := &mapstructure.DecoderConfig {
+		DecodeHook: JsonStructInMapHookFunc(),
+		Result: a.object,
+	}
+	d, _ := mapstructure.NewDecoder(deCfg)
+	if local != nil {
+		err := d.Decode(local)
+		if err != nil {
+			log.Printf("Read LOCAL config with error=%v", err)
+		}
+	}
+	err := d.Decode(remote)
+	if err != nil {
+		log.Printf("Read REMOTE config with error=%v", err)
+	} else {
+		if a.notify != nil {
+			a.notify <- true
+		}
+	}
+	return err
 }

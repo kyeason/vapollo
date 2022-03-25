@@ -14,7 +14,7 @@ go get github.com/kyeason/vapollo
 ## 初始化 Apollo
 
 `InitApollo` 方法用于准备后续调用中与 Apollo 相关的参数，具体参数如下：
-
+- 常规参数
 ```json
 {
   "server": "127.0.0.1",
@@ -27,19 +27,55 @@ go get github.com/kyeason/vapollo
 }
 ```
 
+- 结构体输出参数及变更通知管道
+  
+```go
+func Struct(obj interface{}) Option
+func Notify(notify chan bool) Option
+````
+
+初始化 Apollo 时，使用 `Struct` 选项方法传入结构体指针，可以实时将配置变更反射到目标结构体中; 如需要获取变更通知，可使用 `Notify` 选项传入 `chan bool` 类型的管道，并在新建的协程中监测其变化，示例如下：
+```go
+type config struct {
+	PropA `mapstructure:"prop_a"`
+	PropB `mapstructure:"prop_b"`
+}
+configObj := config{}
+watchingCh := make(chan bool)
+go func(ch <- chan bool ) {
+    for {
+        log.Printf("Watching channel")
+        select {
+        case changed := <- ch:
+            if changed {
+            log.Printf("Parsed values=%v", configObj)
+            } else {
+            log.Printf("Nothing changed")
+            }
+        }
+    }
+}(watchingCh)
+opts := []Option {
+    vapollo.Server("xxx.xxx.xxx.xxx"),
+    vapollo.AppId("app_xxx"),
+    vapollo.Struct(&appConfig),
+    vapollo.Notify(watchingCh),
+}
+apollo := InitApollo(opts...)
+```
+
 ## 初始化 Viper
 
-`InitViperRemote` 方法接收 3 个参数：
+`InitViperRemote` 方法接收 2 个参数：
 
 1. apollo 对象，由 `InitApollo` 返回
-2. 用于读取配置的结构体，结构体成员绑定到配置项 key
-3. Viper 的初始化选项列表（可变参数） `viper.Option`
+2. Viper 的初始化选项列表（可变参数） `viper.Option`
 
 当未提供配置结构体时, 只能使用 viper api 来读取配置项的值，如：
 
 ```go
-v.GetString("property_a")
-v.GetInt("property_b")
+vapollo.Remote.GetString("property_a")
+vapollo.Remote.GetInt("property_b")
 // ...
 ```
 
@@ -64,10 +100,6 @@ import (
 )
 
 func main() {
-    pflag.String("env", "prod", "Running environment(dev/qa/pre/prod)")
-    pflag.Parse()
-    viper.BindPFlags(pflag.CommandLine)
-    env := viper.GetString("env")
     viper.SetConfigFile("app.properties")
     viper.SetConfigType("json")
     err := viper.ReadInConfig()
@@ -75,7 +107,6 @@ func main() {
       log.Panicln("Failed reading configuration file:", err)
       return
     }
-    v := viper.Sub(env)
 
     type Config struct {
       PropertyA string    `mapstructure:"property_a"`,
@@ -83,8 +114,13 @@ func main() {
       //...
     }
     appConfig := &Config{}
-    apollo := vapollo.InitApollo(vapollo.Server(v.GetString("server")),vapollo.AppId(v.GetString("appId")))
-    v, err = vapollo.InitViperRemote(apollo, appConfig, viper.KeyDelimiter(":"))
+    opts := []Option {
+    	vapollo.Server("xxx.xxx.xxx.xxx"),
+    	vapollo.AppId("app_xxx"),
+        vapollo.Struct(&appConfig),
+    }
+    apollo := vapollo.InitApollo(opts...)
+    v, err = vapollo.InitViperRemote(apollo, viper.KeyDelimiter(":"))
 }
 ```
 

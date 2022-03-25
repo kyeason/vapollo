@@ -15,7 +15,7 @@ go get github.com/kyeason/vapollo
 ## Initialize Apollo
 
 The `InitApollo` method prepares required parameters for further step. Usually there are following parameters:
-
+- Apollo parameters
 ```json
 {
   "server": "127.0.0.1",
@@ -28,17 +28,64 @@ The `InitApollo` method prepares required parameters for further step. Usually t
 }
 ```
 
+- Output structure and notification channel
+  
+```go
+func Struct(obj interface{}) Option
+func Notify(notify chan bool) Option
+````
+
+It's possible to reflect remote changing by passing a `Struct` option to `InitApollo` method.
+Further, if we want to know about the changing, pass a `Notify` option with a `chan bool` channel, for example:
+```go
+type config struct {
+	PropA `mapstructure:"prop_a"`
+	PropB `mapstructure:"prop_b"`
+}
+configObj := config{}
+watchingCh := make(chan bool)
+go func(ch <- chan bool ) {
+    for {
+        log.Printf("Watching channel")
+        select {
+        case changed := <- ch:
+            if changed {
+            log.Printf("Parsed values=%v", configObj)
+            } else {
+            log.Printf("Nothing changed")
+            }
+        }
+    }
+}(watchingCh)
+opts := []Option {
+    vapollo.Server("xxx.xxx.xxx.xxx"),
+    vapollo.AppId("app_xxx"),
+    vapollo.Struct(&appConfig),
+    vapollo.Notify(watchingCh),
+}
+apollo := InitApollo(opts...)
+```
 ## Initialize Viper
 
-The `InitViperRemote` method takes 3 parameters: 
+The `InitViperRemote` method takes 2 parameters: 
 
 1. apollo object returned by `InitApollo`
-2. Configuration struct that mapped to the keys
-3. Various `viper.Option`
+2. Various `viper.Option`
 
 When the configuration struct is not provided, then values can be fetched using viper api `v.GetString("property_a")`, `v.GetInt("property_b")`.
 
+```go
+vapollo.Remote.GetString("property_a")
+vapollo.Remote.GetInt("property_b")
+// ...
+```
 Otherwise, values can be accessed directly from the struct object, e.g. `appConfig.PropertyA`, `appConfig.PropertyB`.
+
+```go
+appConfig.PropertyA
+appConfig.PropertyB
+// ...
+```
 
 > **Note:**  If any keys of a app are in nested style like "a.b", then viper can NOT read it correctly. So we can set the KeyDelimiter option of viper to ':' or else instead of '.'
 
@@ -53,10 +100,6 @@ import (
 )
 
 func main() {
-    pflag.String("env", "prod", "Running environment(dev/qa/pre/prod)")
-    pflag.Parse()
-    viper.BindPFlags(pflag.CommandLine)
-    env := viper.GetString("env")
     viper.SetConfigFile("app.properties")
     viper.SetConfigType("json")
     err := viper.ReadInConfig()
@@ -64,7 +107,6 @@ func main() {
       log.Panicln("Failed reading configuration file:", err)
       return
     }
-    v := viper.Sub(env)
 
     type Config struct {
       PropertyA string    `mapstructure:"property_a"`,
@@ -72,8 +114,13 @@ func main() {
       //...
     }
     appConfig := &Config{}
-    apollo := vapollo.InitApollo(vapollo.Server(v.GetString("server")),vapollo.AppId(v.GetString("appId")))
-    v, err = vapollo.InitViperRemote(apollo, appConfig, viper.KeyDelimiter(":"))
+    opts := []Option {
+    	vapollo.Server("xxx.xxx.xxx.xxx"),
+    	vapollo.AppId("app_xxx"),
+        vapollo.Struct(&appConfig),
+    }
+    apollo := vapollo.InitApollo(opts...)
+    v, err = vapollo.InitViperRemote(apollo, viper.KeyDelimiter(":"))
 }
 ```
 
