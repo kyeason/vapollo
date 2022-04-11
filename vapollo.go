@@ -21,6 +21,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -312,6 +313,13 @@ func JsonStructInMapHookFunc() mapstructure.DecodeHookFunc {
 				return f.Interface(), err
 			}
 			return o, nil
+		} else if f.Kind() == reflect.String && t.Kind() != reflect.String {
+			result := reflect.New(t.Type()).Interface()
+			result, err := strconv.Atoi(f.String())
+			if err != nil {
+				return f.Interface(), nil
+			}
+			return result, nil
 		}
 		return f.Interface(), nil
 	}
