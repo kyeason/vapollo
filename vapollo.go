@@ -306,7 +306,7 @@ func (a *Apollo) getNotifications() (bool, error) {
 
 func JsonStructInMapHookFunc() mapstructure.DecodeHookFunc {
 	return func(f reflect.Value, t reflect.Value) (interface{}, error) {
-		if f.Kind() == reflect.String && t.Kind() == reflect.Struct {
+		if f.Kind() == reflect.String && (t.Kind() == reflect.Struct || t.Kind() == reflect.Map) {
 			o := map[string]interface{}{}
 			err := json.Unmarshal([]byte(f.String()), &o)
 			if err != nil {
