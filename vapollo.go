@@ -12,17 +12,22 @@ package vapollo
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Apollo parameters definition
@@ -37,8 +42,8 @@ type Apollo struct {
 
 	// If a struct interface was provided, vapollo will unmarshal the
 	// key/values to the object
-	object       interface{}
-	notify chan  bool
+	object interface{}
+	notify chan bool
 }
 
 // apollo notification structure
@@ -57,7 +62,7 @@ type apolloResponse struct {
 }
 
 type Option interface {
-	apply(a* Apollo)
+	apply(a *Apollo)
 }
 
 type optionFunc func(a *Apollo)
@@ -79,34 +84,84 @@ func NamespaceName(n string) Option {
 }
 
 func Server(s string) Option {
-	return optionFunc(func(a* Apollo) {
+	return optionFunc(func(a *Apollo) {
 		a.server = s
 	})
 }
 
 func AppId(app string) Option {
-	return optionFunc(func(a* Apollo) {
+	return optionFunc(func(a *Apollo) {
 		a.appID = app
 	})
 }
 
 func Struct(obj interface{}) Option {
-	return optionFunc(func(a* Apollo) {
+	return optionFunc(func(a *Apollo) {
 		a.object = obj
 	})
 }
 
 func Notify(notify chan bool) Option {
-	return optionFunc(func(a* Apollo) {
+	return optionFunc(func(a *Apollo) {
 		a.notify = notify
 	})
 }
 
+// Init initialize configuration from local file, assuming that there is a variable "env" that determines the
+// configuration of a specific runtime environment. e.g.
+//
+//	{
+//	  "dev": {
+//	    /* ... */
+//	 },
+//	   "qa": {
+//	     /* ... */
+//	 },
+//	 /* ... */
+//	}
+//	fileName: Name of local file
+//	fileType: Type of file contents, e.g. "json", "yaml", "properties" etc. , see ""
+//	dStruct:  Struct interface corresponding to the structured data
+func Init(fileName, fileType string, dStruct interface{}) error {
+	pflag.String("env", "prod", "Running environment(dev/qa/pre/prod)")
+	pflag.Parse()
+	viper.BindPFlags(pflag.CommandLine)
+	env := viper.GetString("env")
+	viper.AddConfigPath(filepath.Dir(os.Args[0]))
+	viper.SetConfigName(filepath.Base(fileName))
+	viper.SetConfigType(fileType)
+	err := viper.ReadInConfig()
+	if err != nil {
+		log.Panicln("Failed reading local config: ", err)
+	}
+	v := viper.Sub(env)
+	opts := []Option{
+		Server(v.GetString("ip")),
+		AppId(v.GetString("appId")),
+		NamespaceName(v.GetString("namespaceName")),
+		Struct(dStruct),
+	}
+	apollo := InitApollo(opts...)
+	v, err = InitViperRemote(apollo, viper.KeyDelimiter(":"))
+	_ = v.BindPFlags(pflag.CommandLine)
+	if err != nil {
+		log.Panicln("Failed init apollo config: ", err)
+	}
+	// Waiting for remote configuration
+	for trys := 1; len(Remote.AllKeys()) == 0 && trys < 20; trys++ {
+		time.Sleep(time.Millisecond * 50)
+	}
+	if len(Remote.AllKeys()) == 0 {
+		return errors.New("failed retrieving remote config:[EMPTY]")
+	}
+	return nil
+}
+
 // InitApollo initiate apollo with options which server, appId are mandatory.
 // e.g. InitApollo(vapollo.Server("127.0.0.1"), vapollo.AppID("TestApp"))
-func InitApollo(opts ... Option) *Apollo {
-	apollo := &Apollo {
-		cluster: "default",
+func InitApollo(opts ...Option) *Apollo {
+	apollo := &Apollo{
+		cluster:       "default",
 		namespaceName: "application",
 	}
 	for _, opt := range opts {
@@ -118,7 +173,7 @@ func InitApollo(opts ... Option) *Apollo {
 		return nil
 	}
 
-	apollo.notifications = []notification {
+	apollo.notifications = []notification{
 		{
 			NamespaceName:  apollo.namespaceName,
 			NotificationID: -1,
@@ -156,24 +211,24 @@ func InitViperRemote(apollo *Apollo, opts ...viper.Option) (*viper.Viper, error)
 	Remote.SetConfigType("json")
 	// Watch modifications on remote
 	_ = Remote.WatchRemoteConfigOnChannel()
-	// Map values to object member if a object interface was provided
+	// Map values to object member if an object interface was provided
 	_ = apollo.ParseStruct(viper.AllSettings(), Remote.AllSettings())
 	return Remote, nil
 }
 
-func (a Apollo) Get(rp viper.RemoteProvider) (io.Reader, error) {
+func (a *Apollo) Get(rp viper.RemoteProvider) (io.Reader, error) {
 	b, err := a.load()
 	r := bytes.NewReader(b)
 	return r, err
 }
 
-func (a Apollo) Watch(rp viper.RemoteProvider) (io.Reader, error) {
+func (a *Apollo) Watch(rp viper.RemoteProvider) (io.Reader, error) {
 	b, err := a.loadFromCache()
 	r := bytes.NewReader(b)
 	return r, err
 }
 
-func (a Apollo) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.RemoteResponse, chan bool) {
+func (a *Apollo) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.RemoteResponse, chan bool) {
 	ch := make(chan *viper.RemoteResponse)
 	quitCh := make(chan bool)
 	go func(vc chan<- *viper.RemoteResponse, quit <-chan bool) {
@@ -210,7 +265,7 @@ func (a Apollo) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.RemoteRespo
 	return ch, quitCh
 }
 
-func (a Apollo) getNotificationsBody() string {
+func (a *Apollo) getNotificationsBody() string {
 	b, err := json.Marshal(a.notifications)
 	if err != nil {
 		return ""
@@ -325,10 +380,13 @@ func JsonStructInMapHookFunc() mapstructure.DecodeHookFunc {
 	}
 }
 
-func (a* Apollo) ParseStruct(local map[string]interface{}, remote map[string]interface{}) error {
-	deCfg := &mapstructure.DecoderConfig {
+func (a *Apollo) ParseStruct(local map[string]interface{}, remote map[string]interface{}) error {
+	if a.object == nil {
+		return errors.New("failed parsing struct: no interface")
+	}
+	deCfg := &mapstructure.DecoderConfig{
 		DecodeHook: JsonStructInMapHookFunc(),
-		Result: a.object,
+		Result:     a.object,
 	}
 	d, _ := mapstructure.NewDecoder(deCfg)
 	if local != nil {

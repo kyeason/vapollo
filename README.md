@@ -11,7 +11,48 @@ go get github.com/kyeason/vapollo
 
 # 如何使用
 
-## 初始化 Apollo
+## 1. 快速初始化 Init
+`Init` 方法从本地配置文件加载，并根据本地配置项，完成远端 Apollo 配置加载。此方法默认使用 `env` 变量，从配置文件内读取指定环境下的配置项。如：
+```json
+{
+  "dev": {
+    /* ... */
+  },
+  "qa": {
+    /* ... */
+  },
+  /* ... */
+}
+```
+### 示例代码
+```go
+import (
+  "github.com/kyeason/vapollo"
+  "github.com/spf13/pflag"
+  "github.com/spf13/viper"
+  "log"
+)
+
+func main() {
+    type Config struct {
+      PropertyA string    `mapstructure:"property_a"`,
+      PropertyB int       `mapstructure:"property_b"`,
+      //...
+    }
+    appConfig := &Config{}
+    err := vapollo.Init("app.json", "json", appConfig)
+	if err != nil {
+        log.Panicln("Failed reading configuration file:", err)
+    } 
+    //...
+}
+```
+
+```
+
+## 2. 自定义配置
+
+### 初始化 Apollo
 
 `InitApollo` 方法用于准备后续调用中与 Apollo 相关的参数，具体参数如下：
 - 常规参数
@@ -19,11 +60,11 @@ go get github.com/kyeason/vapollo
 {
   "server": "127.0.0.1",
   "appId": "apollo-app",
-  // 注释中的参数为可选参数，内建使用对应的默认值
+  /* 注释中的参数为可选参数，内建使用对应的默认值
   // "cluster": "default",
   // "namespaceName": "application",
   // "ip": "",
-  // "releaseKey": ""
+  // "releaseKey": "" */
 }
 ```
 
@@ -64,7 +105,7 @@ opts := []Option {
 apollo := InitApollo(opts...)
 ```
 
-## 初始化 Viper
+### 初始化 Viper
 
 `InitViperRemote` 方法接收 2 个参数：
 
@@ -89,7 +130,7 @@ appConfig.PropertyB
 
 > **注意:**  如果 Apollo 中的 Key 使用了点分命名方式如"a.b"，则无法读取该 Key（Viper 不支持从远程配置读取嵌套类型 Key）。因此可以指定 Viper 的 KeyDelimiter 参数，使用 ':' 代替默认的 '.'。
 
-## 示例代码
+## 3.示例代码
 
 ```go
 import (
