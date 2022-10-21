@@ -111,18 +111,25 @@ func Notify(notify chan bool) Option {
 // configuration of a specific runtime environment. e.g.
 //
 //	{
-//	  "dev": {
-//	    /* ... */
-//	 },
-//	   "qa": {
-//	     /* ... */
-//	 },
-//	 /* ... */
+//		"dev": {
+//			...
+//		},
+//		"qa": {
+//			...
+//		},
+//		...
 //	}
-//	fileName: Name of local file
-//	fileType: Type of file contents, e.g. "json", "yaml", "properties" etc. , see ""
-//	dStruct:  Struct interface corresponding to the structured data
-func Init(fileName, fileType string, dStruct interface{}) error {
+//
+//	Parameters
+//		fileName:  Name of local file
+//		fileType:  Type of file contents, e.g. "json", "yaml", "properties" etc. , see https://github.com/spf13/viper
+//		apolloKey: Apollo sub configuration key
+//		dStruct:   Struct interface corresponding to the structured data
+//
+//	Usage:
+//		Init("app.json", "json", "apollo", nil)
+//		Init("app.yml", "yaml", "", &config)
+func Init(fileName, fileType, apolloKey string, dStruct interface{}) error {
 	pflag.String("env", "prod", "Running environment(dev/qa/pre/prod)")
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -134,7 +141,11 @@ func Init(fileName, fileType string, dStruct interface{}) error {
 	if err != nil {
 		log.Panicln("Failed reading local config: ", err)
 	}
-	v := viper.Sub(env)
+	key := env
+	if len(apolloKey) > 0 {
+		key = env + "." + apolloKey
+	}
+	v := viper.Sub(key)
 	opts := []Option{
 		Server(v.GetString("ip")),
 		AppId(v.GetString("appId")),
@@ -186,7 +197,7 @@ func InitApollo(opts ...Option) *Apollo {
 var Remote *viper.Viper
 
 // InitViperRemote initiate viper and apollo remote.
-// Here viper.Options are exposed because if any keys of a app are in nested
+// Here viper.Options are exposed because if any keys of an app are in nested
 // style like "a.b", then viper can NOT read it correctly. So we can set the
 // KeyDelimiter option of viper to ':' or else instead of '.'
 func InitViperRemote(apollo *Apollo, opts ...viper.Option) (*viper.Viper, error) {
