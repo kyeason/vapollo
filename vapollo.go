@@ -209,7 +209,7 @@ func InitViperRemote(apollo *Apollo, opts ...viper.Option) (*viper.Viper, error)
 		log.Panicln("Can not init viper remote with apollo: Please check and init apollo first")
 	}
 
-	if !strings.Contains(apollo.server, "http") || !strings.Contains(apollo.server, "https") {
+	if !strings.Contains(apollo.server, "http") && !strings.Contains(apollo.server, "https") {
 		apollo.server = "http://" + apollo.server
 	}
 	viper.RemoteConfig = apollo
