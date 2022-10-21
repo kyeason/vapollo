@@ -16,12 +16,12 @@ go get github.com/kyeason/vapollo
 ```json
 {
   "dev": {
-    /* ... */
+    //...
   },
   "qa": {
-    /* ... */
+    //...
   },
-  /* ... */
+  //...
 }
 ```
 ### 示例代码
@@ -47,24 +47,22 @@ func main() {
     //...
 }
 ```
-
-```
-
 ## 2. 自定义配置
 
 ### 初始化 Apollo
 
 `InitApollo` 方法用于准备后续调用中与 Apollo 相关的参数，具体参数如下：
 - 常规参数
+
 ```json
 {
   "server": "127.0.0.1",
   "appId": "apollo-app",
-  /* 注释中的参数为可选参数，内建使用对应的默认值
-  // "cluster": "default",
-  // "namespaceName": "application",
-  // "ip": "",
-  // "releaseKey": "" */
+  //注释中的参数为可选参数，内建使用对应的默认值
+  //"cluster": "default",
+  //"namespaceName": "application",
+  //"ip": "",
+  //"releaseKey": ""
 }
 ```
 
