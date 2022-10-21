@@ -129,7 +129,7 @@ func Notify(notify chan bool) Option {
 //	Usage:
 //		Init("app.json", "json", "apollo", nil)
 //		Init("app.yml", "yaml", "", &config)
-func Init(fileName, fileType, apolloKey string, dStruct interface{}) error {
+func Init(fileName, fileType, apolloKey string, dStruct interface{}) (v *viper.Viper, err error) {
 	pflag.String("env", "prod", "Running environment(dev/qa/pre/prod)")
 	pflag.Parse()
 	viper.BindPFlags(pflag.CommandLine)
@@ -137,7 +137,7 @@ func Init(fileName, fileType, apolloKey string, dStruct interface{}) error {
 	viper.AddConfigPath(filepath.Dir(os.Args[0]))
 	viper.SetConfigName(filepath.Base(fileName))
 	viper.SetConfigType(fileType)
-	err := viper.ReadInConfig()
+	err = viper.ReadInConfig()
 	if err != nil {
 		log.Panicln("Failed reading local config: ", err)
 	}
@@ -145,12 +145,14 @@ func Init(fileName, fileType, apolloKey string, dStruct interface{}) error {
 	if len(apolloKey) > 0 {
 		key = env + "." + apolloKey
 	}
-	v := viper.Sub(key)
+	v = viper.Sub(key)
+	notify := make(chan bool)
 	opts := []Option{
 		Server(v.GetString("ip")),
 		AppId(v.GetString("appId")),
 		NamespaceName(v.GetString("namespaceName")),
 		Struct(dStruct),
+		Notify(notify),
 	}
 	apollo := InitApollo(opts...)
 	v, err = InitViperRemote(apollo, viper.KeyDelimiter(":"))
@@ -159,13 +161,15 @@ func Init(fileName, fileType, apolloKey string, dStruct interface{}) error {
 		log.Panicln("Failed init apollo config: ", err)
 	}
 	// Waiting for remote configuration
-	for trys := 1; len(Remote.AllKeys()) == 0 && trys < 20; trys++ {
-		time.Sleep(time.Millisecond * 50)
+	go func(quit chan bool) {
+		time.Sleep(time.Millisecond * 800)
+		quit <- true
+	}(notify)
+	select {
+	case <-notify:
+		return v, nil
 	}
-	if len(Remote.AllKeys()) == 0 {
-		return errors.New("failed retrieving remote config:[EMPTY]")
-	}
-	return nil
+	return v, errors.New("failed retrieving remote config:[EMPTY]")
 }
 
 // InitApollo initiate apollo with options which server, appId are mandatory.
@@ -268,6 +272,9 @@ func (a *Apollo) WatchChannel(rp viper.RemoteProvider) (<-chan *viper.RemoteResp
 						log.Printf("All settings: %v", settings)
 						// Parse all settings to the struct interface provided
 						_ = a.ParseStruct(nil, settings)
+					}
+					if a.notify != nil {
+						a.notify <- true
 					}
 				}
 			}
@@ -409,10 +416,6 @@ func (a *Apollo) ParseStruct(local map[string]interface{}, remote map[string]int
 	err := d.Decode(remote)
 	if err != nil {
 		log.Printf("Read REMOTE config with error=%v", err)
-	} else {
-		if a.notify != nil {
-			a.notify <- true
-		}
 	}
 	return err
 }
