@@ -128,7 +128,7 @@ appConfig.PropertyB
 
 > **注意:**  如果 Apollo 中的 Key 使用了点分命名方式如"a.b"，则无法读取该 Key（Viper 不支持从远程配置读取嵌套类型 Key）。因此可以指定 Viper 的 KeyDelimiter 参数，使用 ':' 代替默认的 '.'。
 
-## 3.示例代码
+### 示例代码
 
 ```go
 import (
