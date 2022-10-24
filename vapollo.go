@@ -141,16 +141,16 @@ func Init(fileName, fileType, apolloKey string, dStruct interface{}) (v *viper.V
 	if err != nil {
 		log.Panicln("Failed reading local config: ", err)
 	}
-	key := env
+	key := apolloKey
 	if len(apolloKey) > 0 {
-		key = env + "." + apolloKey
+		key = apolloKey + "."
 	}
-	v = viper.Sub(key)
+	v = viper.Sub(env)
 	notify := make(chan bool)
 	opts := []Option{
-		Server(v.GetString("ip")),
-		AppId(v.GetString("appId")),
-		NamespaceName(v.GetString("namespaceName")),
+		Server(v.GetString(key + "ip")),
+		AppId(v.GetString(key + "appId")),
+		NamespaceName(v.GetString(key + "namespaceName")),
 		Struct(dStruct),
 		Notify(notify),
 	}
