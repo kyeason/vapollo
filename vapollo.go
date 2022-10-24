@@ -155,7 +155,7 @@ func Init(fileName, fileType, apolloKey string, dStruct interface{}) (v *viper.V
 		Notify(notify),
 	}
 	apollo := InitApollo(opts...)
-	v, err = InitViperRemote(apollo, viper.KeyDelimiter(":"))
+	_, err = InitViperRemote(apollo, viper.KeyDelimiter(":"))
 	_ = v.BindPFlags(pflag.CommandLine)
 	if err != nil {
 		log.Panicln("Failed init apollo config: ", err)
